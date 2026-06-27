@@ -13,7 +13,7 @@
       padding: 20px;
     }
     .container {
-      max-width: 420px;
+      max-width: 400px;
       margin: auto;
       background: #1e1e1e;
       padding: 20px;
@@ -27,11 +27,11 @@
     }
     label {
       display: block;
-      margin-top: 12px;
+      margin-top: 15px;
       font-size: 14px;
       color: #ccc;
     }
-    input {
+    input, select {
       width: 100%;
       padding: 10px;
       margin-top: 5px;
@@ -45,34 +45,35 @@
     }
     button {
       width: 48%;
-      margin-top: 15px;
+      margin-top: 20px;
       padding: 10px;
-      font-size: 15px;
+      font-size: 16px;
       border-radius: 10px;
       border: none;
       cursor: pointer;
       color: white;
     }
-    .start { background: #00c853; }
-    .stop { background: #d50000; float: right; }
-    .pair { background: #2962ff; width: 100%; }
-
+    .start {
+      background: #00c853;
+    }
+    .stop {
+      background: #d50000;
+      float: right;
+    }
     .status {
       text-align: center;
-      margin-top: 15px;
+      margin-top: 20px;
       font-weight: bold;
     }
-    .pairCode {
-      text-align: center;
-      font-size: 22px;
-      letter-spacing: 4px;
-      color: #00ff88;
-      margin-top: 10px;
+    img {
+      display: block;
+      margin: 10px auto;
+      max-width: 200px;
     }
     #logBox {
       background: #000;
       padding: 10px;
-      margin-top: 15px;
+      margin-top: 20px;
       border-radius: 10px;
       height: 150px;
       overflow-y: auto;
@@ -85,30 +86,23 @@
   <div class="container">
     <h2>💬 WhatsApp Server</h2>
 
-    <!-- 🔑 PAIR CODE SECTION -->
-    <label>WhatsApp Number (with country code)</label>
-    <input type="text" id="pairNumber" placeholder="91XXXXXXXXXX" />
-    <button class="pair" onclick="getPairCode()">🔑 Get Pair Code</button>
-    <div class="pairCode" id="pairCode"></div>
+    <label>Receiver Number(s) or Group ID(s) (comma-separated)</label>
+    <input type="text" id="receiver" placeholder="Ex: 9199xxxxxxx,9188xxxxxxx,group@g.us" />
 
-    <hr style="margin:20px 0; border-color:#333;">
+    <label>Name (for personalization)</label>
+    <input type="text" id="name" placeholder="Ex: HATER" />
 
-    <label>Receiver Number(s) / Group ID(s)</label>
-    <input type="text" id="receiver" placeholder="9199xxxxxxx,group@g.us" />
+    <label>Delay Between Messages (in seconds)</label>
+    <input type="number" id="delay" placeholder="Default: 2" />
 
-    <label>Name (optional)</label>
-    <input type="text" id="name" placeholder="HATER" />
-
-    <label>Delay Between Messages (sec)</label>
-    <input type="number" id="delay" placeholder="Default 2" />
-
-    <label>Upload .txt File</label>
+    <label>Upload .txt File (One line = One Message)</label>
     <input type="file" id="file" accept=".txt" />
 
     <button class="start" onclick="start()">▶️ Start</button>
     <button class="stop" onclick="stop()">⏹️ Stop</button>
 
     <div class="status" id="status">Status: Idle</div>
+    <img id="qr" />
 
     <div id="logBox">
       <b>📜 Live Logs:</b>
@@ -119,29 +113,15 @@
   <script>
     let logInterval = null;
 
-    async function getPairCode() {
-      const number = document.getElementById('pairNumber').value.trim();
-      if (!number) {
-        alert('Enter WhatsApp number with country code');
-        return;
-      }
-
-      document.getElementById('pairCode').innerText = '⏳ Generating...';
-
-      const res = await fetch('/api/pair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number })
-      });
-
+    async function getQR() {
+      const res = await fetch('/api/qr');
       const data = await res.json();
-      if (data.pairCode) {
-        document.getElementById('pairCode').innerText = data.pairCode;
-        document.getElementById('status').innerText =
-          'Enter this code in WhatsApp → Linked Devices';
+      if (data.qr) {
+        document.getElementById("qr").src = data.qr;
+        document.getElementById("status").innerText = "Scan QR to connect";
       } else {
-        document.getElementById('pairCode').innerText = '';
-        document.getElementById('status').innerText = data.error || 'Pair failed';
+        document.getElementById("qr").style.display = "none";
+        document.getElementById("status").innerText = data.message;
       }
     }
 
@@ -157,12 +137,14 @@
       }
 
       const formData = new FormData();
-      formData.append('receiver', receiver);
+      formData.append('receiver', receiver); // Will be comma-separated string
       formData.append('name', name);
       formData.append('delay', delay);
       formData.append('file', file);
 
       document.getElementById('status').innerText = '⏳ Sending...';
+
+      // ✅ Clear previous logs
       document.getElementById('logs').innerHTML = '';
 
       const res = await fetch('/api/start', {
@@ -170,8 +152,9 @@
         body: formData
       });
       const data = await res.json();
-      document.getElementById('status').innerText = data.message || 'Started';
+      document.getElementById('status').innerText = data.message || '✅ Started';
 
+      // ✅ Start live logs
       if (logInterval) clearInterval(logInterval);
       logInterval = setInterval(loadLogs, 2000);
     }
@@ -179,8 +162,9 @@
     async function stop() {
       const res = await fetch('/api/stop', { method: 'POST' });
       const data = await res.json();
-      document.getElementById('status').innerText = data.message || 'Stopped';
+      document.getElementById('status').innerText = data.message || '🛑 Stopped';
 
+      // ✅ Stop log fetching
       if (logInterval) {
         clearInterval(logInterval);
         logInterval = null;
@@ -188,11 +172,20 @@
     }
 
     async function loadLogs() {
-      const res = await fetch('/api/logs');
-      const data = await res.json();
-      document.getElementById('logs').innerHTML =
-        data.logs.map(l => `<div>${l}</div>`).join('');
+      try {
+        const res = await fetch('/api/logs');
+        const data = await res.json();
+        const logDiv = document.getElementById('logs');
+        logDiv.innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+        logDiv.scrollTop = logDiv.scrollHeight;
+      } catch (e) {
+        console.log("Log fetch error");
+      }
     }
+
+    window.onload = () => {
+      getQR(); // Load QR on start
+    };
   </script>
 </body>
 </html>
